@@ -21,269 +21,69 @@ Elle est alignée avec les bonnes pratiques OWASP, en particulier OWASP ASVS (Ap
 
 ---
 
-## 3. Authentification & gestion des identités
+## 2.1. Annexe de mapping OWASP ASVS (niveau entreprise)
 
-### 3.1. Mots de passe
+Pour permettre un audit formel, cette politique backend est mappée sur les exigences OWASP ASVS. Chaque grande section du document correspond à un ou plusieurs chapitres ASVS. [web:16][web:50]
 
-- Hashage avec un algorithme moderne (Argon2id ou bcrypt avec facteur de coût élevé).  
-- Salt unique par mot de passe, généré de manière sécurisée.  
-- Politique de mot de passe : longueur minimale, complexité raisonnable, tentatives limitées.  
-- Fonction de réinitialisation sécurisée (token à durée limitée, usage unique, non prédictible).  
+| Section du document                      | Référence OWASP ASVS | Description principale                                  |
+|-----------------------------------------|----------------------|---------------------------------------------------------|
+| 3. Authentification & identités         | V2.x                 | Authentication Verification Requirements                |
+| 4. Autorisation (RBAC / ABAC)           | V3.x                 | Session Management & Access Control                     |
+| 5. Validation & sanitation des données  | V5.x                 | Validation, Sanitization and Encoding                   |
+| 6. Injections (SQL/NoSQL/Commande)      | V7.x                 | Injection Prevention & Error Handling                   |
+| 7. Sécurité des API                     | V4.x / V13.x         | Access Control / API and Web Service Security           |
+| 8. Chiffrement, secrets & configuration | V9.x                 | Data Protection (at rest & in transit)                  |
+| 9–10. Logs, audit, erreurs              | V10.x                | Logging and Error Handling                              |
+| 11. Durcissement infra                  | V12.x                | Environment & General Web Service Security              |
+| 12. CI/CD & dépendances                 | V14.x                | Configuration, Build and Deployment                     |
+| 13–15. Résilience & gouvernance         | V1.x / V14.x         | Architecture, Threat Modeling, Verification Process     |
 
-### 3.2. Sessions, tokens et SSO
-
-- Sessions serveur signées ou tokens (JWT) signés avec clés fortes, rotation régulière des secrets de signature.  
-- Rotation des refresh tokens, invalidation à la déconnexion ou en cas de suspicion (vol, fuite).  
-- Temps de vie limité des tokens d’accès (access tokens courts, refresh tokens plus longs mais surveillés).  
-- Pour le SSO : usage de protocoles standards (OAuth2, OpenID Connect) et d’un IdP fiable.  
-
-### 3.3. MFA (authentification multi-facteurs)
-
-- MFA obligatoire pour les comptes administrateurs et les accès sensibles (consoles, backoffice, panel support).  
-- Gestion sécurisée des OTP / WebAuthn / facteurs additionnels.  
+Une annexe interne peut détailler, pour chaque exigence ASVS (Vx.y.z), les contrôles techniques et processus correspondants dans l’architecture. [web:7][web:119]
 
 ---
 
-## 4. Autorisation (RBAC / ABAC) et contrôle d’accès
+## 2.2. Politique de gestion des incidents de sécurité
 
-### 4.1. RBAC (Role-Based Access Control)
+En cas d’incident de sécurité affectant le backend (exfiltration de données, compromission de compte, attaque en cours), les étapes suivantes doivent être appliquées : [web:115][web:118]
 
-- Définir des rôles clairs : par exemple `USER`, `ADMIN`, `SUPPORT`, `SYSTEM`.  
-- Associer les permissions aux rôles, **pas aux utilisateurs directement**.  
-- Vérifier systématiquement le rôle côté backend avant toute action sensible (création/suppression, admin, accès à d’autres comptes).  
+1. **Détection & classification** : identifier rapidement le type d’incident (disponibilité, intégrité, confidentialité) et son périmètre.  
+2. **Containment / isolement** : limiter l’impact (désactivation de fonctionnalités, isolation d’un service ou d’un nœud, blocage d’IP ou de tokens).  
+3. **Éradication & correction** : appliquer les correctifs (patch, configuration, règles WAF), révoquer et régénérer les secrets concernés (clés JWT, mots de passe, tokens API).  
+4. **Rétablissement contrôlé** : remettre progressivement le service en ligne, sous surveillance renforcée.  
+5. **Post‑mortem & amélioration** : documenter l’incident, mettre à jour la présente politique, les procédures et les contrôles techniques.  
 
-### 4.2. ABAC (Attribute-Based Access Control) – optionnel
-
-- Ajouter des conditions basées sur des attributs (organisation, région, type de device, heure, IP, statut, etc.) pour les cas à risque.  
-- Utiliser ABAC pour les scénarios avancés (multi-tenant, restrictions légales, contextuelles).  
-
-### 4.3. Multi-tenant & séparation des données
-
-- Toutes les requêtes doivent être filtrées par tenant/organisation au niveau backend (ex : `WHERE tenant_id = ?`).  
-- Ne jamais utiliser un identifiant de tenant envoyé par le client comme unique source de vérité sans vérification.  
-- Empêcher qu’un utilisateur d’un tenant A puisse accéder aux données d’un tenant B (BOLA/IDOR).  
+Les contacts responsables (SecOps / équipe sécurité, lead backend, responsable produit, DPO si données personnelles) doivent être définis par projet et accessibles dans la documentation interne. [web:104][web:110]
 
 ---
 
-## 5. Validation & sanitation des données côté serveur
+## 2.3. Politique de tests d’intrusion / pentest
 
-### 5.1. Validation systématique
+Des tests d’intrusion réguliers sont réalisés afin de vérifier l’efficacité des mesures de sécurité décrites dans ce document. [web:20][web:111]
 
-- Valider **tous** les inputs : path params, query, body, headers, fichiers uploadés.  
-- Utiliser des schémas de validation (par ex. JSON Schema, DTO avec contraintes) pour chaque endpoint.  
-- Imposer des limites : longueur maximale, types stricts (int, string, email, URL), formats (regex), valeurs autorisées (enum).  
+### 2.3.1. Fréquence
 
-### 5.2. Sanitation
+- Un test d’intrusion complet est réalisé au minimum **1 à 2 fois par an** sur les environnements de pré‑production ou de production contrôlée.  
+- Un test spécifique est déclenché après tout **changement majeur** de l’architecture (nouveau module critique, refonte d’auth, ouverture d’API à des tiers).  
 
-- Normaliser/sanitiser les données avant stockage ou log (ex : supprimer les caractères de contrôle, neutraliser les séquences suspectes).  
-- Éviter d’enregistrer du HTML/JS brut, ou le marquer comme tel et l’encoder correctement au moment de l’affichage côté frontend.  
+### 2.3.2. Périmètre
 
----
+Les pentests couvrent au minimum :
 
-## 6. Protection contre les injections (SQL, NoSQL, Commande)
+- Les **APIs backend** (REST, GraphQL, gRPC) exposées aux clients et partenaires.  
+- Les mécanismes d’**authentification, de session et d’autorisation** (RBAC/ABAC, multi‑tenant).  
+- Les accès à la **base de données** et aux systèmes de stockage (injections, exfiltration, élévation de privilèges).  
+- Les composants d’infrastructure critiques reliés au backend (gateway, WAF, reverse proxy).  
 
-### 6.1. SQL
+### 2.3.3. Méthodologie
 
-- Utiliser des requêtes paramétrées / prepared statements ou un ORM sérieux.  
-- Interdiction de concaténer des fragments SQL à partir de données utilisateur.  
-- Limiter les droits de l’utilisateur de base de données utilisé par l’application (pas de `SUPER`, pas de `DROP` global, etc.).  
+- Tests combinant **outils automatisés** (scanners DAST, fuzzers, analyseurs de configuration) et **tests manuels** réalisés par des personnes compétentes (interne ou prestataire spécialisé). [web:116][web:118]  
+- Référentiels OWASP (ASVS, OWASP Top 10, OWASP API Security, WSTG) comme base minimale des scénarios. [web:16][web:20]  
+- Résultats :
+  - documentés dans un rapport détaillé,  
+  - priorisés (critique / haut / moyen / faible),  
+  - suivis par un plan de remédiation (correctifs, durcissements, mises à jour).  
 
-### 6.2. NoSQL (MongoDB, Elasticsearch, etc.)
+### 2.3.4. Gestion des risques lors des tests
 
-- Empêcher l’injection d’opérateurs ou de pipelines non contrôlés (`$where`, agrégations dynamiques venant du client).  
-- Valider strictement les structures de requête autorisées.  
-
-### 6.3. Command injection
-
-- Éviter autant que possible d’appeler le shell; si nécessaire, utiliser des APIs de haut niveau et whitelister les arguments.  
-- Jamais de concat de strings utilisateur dans une commande shell.  
-
----
-
-## 7. Sécurité des API (REST, GraphQL, gRPC)
-
-### 7.1. Authentification obligatoire
-
-- Tous les endpoints sont protégés par auth, sauf ceux explicitement publics (health check, landing API, etc.).  
-- Éviter les “backdoors” techniques (endpoints de debug, flags non documentés).  
-
-### 7.2. OWASP API Top 10 (principes clés)
-
-- **BOLA / IDOR** : toujours vérifier que l’utilisateur a le droit d’accéder à l’objet ciblé (ex : `resource.owner_id == user.id`).  
-- **Mass assignment** : n’exposer que les champs modifiables explicitement (DTO en entrée), pas de binding direct du body sur l’entité.  
-- **Rate limiting** : limiter les requêtes sur les endpoints sensibles (login, reset, endpoints lourds).  
-- **Exposition de données** : filtrer les champs renvoyés (pas de colonnes internes, pas de secrets dans les réponses API).  
-
-### 7.3. GraphQL (si utilisé)
-
-- Limiter la profondeur et la complexité des requêtes pour éviter les DoS logiques.  
-- Désactiver ou restreindre l’introspection en production si possible.  
-- Mettre en place un contrôle d’accès fin par type/champ (RBAC/ABAC au niveau du resolver).  
-
----
-
-## 8. Chiffrement, secrets & configuration
-
-### 8.1. Chiffrement en transit
-
-- HTTPS/TLS obligatoire pour toutes les communications externes.  
-- Chiffrement interne (mTLS) recommandé pour les environnements multi-tenant ou non totalement de confiance.  
-
-### 8.2. Chiffrement au repos
-
-- Chiffrer les colonnes sensibles (PII, mots de passe d’autres systèmes, tokens longue durée, données médicales, financières).  
-- Utiliser des algos modernes (AES-GCM, ChaCha20-Poly1305) avec gestion correcte des IV et clés.  
-
-### 8.3. Gestion des secrets
-
-- Tous les secrets (mots de passe DB, clés API, clés JWT, tokens OAuth) sont stockés hors du code : variables d’environnement, coffre-fort de secrets (Vault, KMS, Secret Manager, etc.).  
-- Rotation régulière des secrets critiques.  
-- Interdiction de committer des secrets dans le dépôt ou les artefacts.  
-
----
-
-## 9. Journaux, audit & monitoring
-
-### 9.1. Journaux
-
-- Journaliser les événements importants : connexions, échecs de login, changement de mots de passe, modifications de droits, actions critiques (suppression, exports massifs).  
-- Utiliser un format structuré (JSON) pour permettre la recherche et la corrélation.  
-
-### 9.2. Centralisation et alertes
-
-- Envoyer les logs vers une plateforme centralisée (ELK, Loki, SIEM).  
-- Configurer des alertes sur :
-  - pics de 401/403  
-  - augmentations de 5xx  
-  - nombre élevé de tentatives de login/OTP échouées  
-  - patterns anormaux (scans d’URLs, payloads suspects).  
-
-### 9.3. Traçabilité & conformité
-
-- Conserver les journaux d’audit (qui a fait quoi, quand) selon les exigences légales ou internes.  
-- Protéger les logs contre la modification ou la suppression non autorisée.  
-
----
-
-## 10. Gestion des erreurs & messages
-
-- Ne jamais renvoyer de stacktrace brute au client.  
-- Messages d’erreur côté client : génériques (ex : « Une erreur est survenue » ou « Accès refusé »).  
-- Détails techniques (stack, query, config) uniquement dans les logs internes.  
-- Éviter d’inclure des données sensibles dans les erreurs loguées (masker les PII, tokens, secrets).  
-
----
-
-## 11. Durcissement de l’infrastructure backend
-
-### 11.1. Serveurs et containers
-
-- OS et middleware régulièrement mis à jour (patching).  
-- Services inutiles désactivés, ports fermés.  
-- Containers exécutés avec des utilisateurs non root et images minimales durcies.  
-
-### 11.2. Réseau
-
-- Segmentation réseau :  
-  - front → gateway/API → services internes → DB.  
-- Bases de données jamais exposées directement à Internet.  
-- Pare-feu/WAF devant les services exposés publiquement.  
-
-### 11.3. WAF et API Gateway
-
-- WAF avec règles OWASP (ModSecurity CRS ou équivalent).  
-- API Gateway pour centraliser :
-  - auth et rate limiting  
-  - quotas par client  
-  - protection contre les attaques volumétriques simples.  
-
----
-
-## 12. Cycle de vie, CI/CD & dépendances
-
-### 12.1. Intégration continue (CI)
-
-- Tests unitaires et d’intégration obligatoires sur chaque commit/merge.  
-- Analyse statique (SAST) sur le code backend (ex : Semgrep, SonarQube, CodeQL).  
-- Analyse des dépendances (SCA) : Dependabot, Snyk, `npm audit`/`pip-audit`/`composer audit`, etc.  
-
-### 12.2. Déploiement (CD)
-
-- Déploiements reproductibles et versionnés, avec possibilité de rollback.  
-- Secrets injectés au runtime (env, secret manager), pas dans l’image ni le code.  
-- Environnements isolés : dev, test, staging, prod avec règles de sécurité cohérentes.  
-
----
-
-## 13. Résilience, sauvegardes & continuité
-
-- Sauvegardes régulières des bases de données, configs critiques et secrets (sous forme chiffrée).  
-- Procédures de restauration testées (exercices réguliers).  
-- Limiter les droits sur les systèmes de backup pour réduire l’impact d’un ransomware ou d’un compte compromis.  
-
----
-
-## 14. Gouvernance & processus de revue
-
-### 14.1. Checklist sécurité par Pull Request
-
-Avant chaque merge backend, vérifier :
-
-- [ ] Authentification : gestion correcte des sessions/tokens, mots de passe hashés.  
-- [ ] Autorisation : vérification des rôles et permissions côté serveur.  
-- [ ] Validation des entrées : schémas, limites, sanitation.  
-- [ ] Injections : pas de concat SQL, NoSQL, commandes.  
-- [ ] API : pas de endpoint sensible sans auth, pas de mass assignment.  
-- [ ] Logs : événements critiques journalisés, pas de données sensibles en clair.  
-- [ ] Config : pas de secrets dans le code, variables d’environnement utilisées.  
-
-### 14.2. Revue de sécurité périodique
-
-- Revue régulière des règles de firewall, WAF, gateway.  
-- Revue des rôles et permissions utilisateurs/admins.  
-- Tests d’intrusion/pentest backend périodiques.  
-
----
-
-## 15. Niveaux de criticité & exigences associées
-
-### Niveau 1 – Services non sensibles
-
-- Ex : contenus publics, blogs, landing pages.  
-- Exigences réduites mais toujours :
-  - Auth/autorisation correctes si nécessaire  
-  - Protection injection  
-  - Logs basiques  
-
-### Niveau 2 – Services sensibles (B2B, SaaS)
-
-- Ex : plateformes clients, données personnelles.  
-- Exigences :
-  - Application complète de cette politique  
-  - SAST + SCA + revue de code  
-  - Monitoring et alertes en place  
-
-### Niveau 3 – Services critiques (finance, santé, infra)
-
-- Ex : paiement, données médicales, systèmes critiques.  
-- Exigences supplémentaires :
-  - MFA étendu  
-  - Revue de sécurité externe (audit/pentest)  
-  - Chiffrement renforcé (au repos + mTLS)  
-  - Processus d’incident response documenté et testé  
-
----
-
-## Conclusion
-
-Cette politique définit un cadre complet pour sécuriser toute application backend :
-
-- Authentification et sessions robustes  
-- Autorisation (RBAC/ABAC) et isolation multi-tenant  
-- Validation et protection contre les injections  
-- Sécurisation des API (REST/GraphQL/gRPC)  
-- Chiffrement, gestion des secrets et configuration  
-- Journaux, audit, monitoring et alertes  
-- Durcissement de l’infrastructure et sécurisation du cycle de vie (CI/CD)  
-
-Ce document doit être adapté à chaque projet en fonction de sa criticité, mais les principes généraux restent obligatoires pour tout backend mis en production.
+- Tests sur la production strictement encadrés (fenêtre de tir définie, supervision en temps réel, rollback prêt).  
+- Tests susceptibles d’impacter la disponibilité (DoS, fuzz massif) exécutés d’abord sur des environnements de test ou de pré‑production.
